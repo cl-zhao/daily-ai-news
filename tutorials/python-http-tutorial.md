@@ -1,1032 +1,923 @@
-# 🐍 Python 调接口完全指南：从零开始学 HTTP 请求传参
+# 🐍 Python 调接口实战手册
+### —— 专为实施同事打造，手把手教你用 Python 和 ABP 系统"对话"
 
-> **面向人群：** Python 新手 / 没有接口调用经验的同学  
-> **后端环境：** C#（ASP.NET Core Web API）  
-> **核心目标：** 搞懂各种情况下如何把参数正确地传给接口
+> 🎯 **写给谁看的？** 软件公司实施同事，不需要编程基础，照着抄就能用  
+> 🏗️ **后端是什么？** C# 开发的 ABP 框架 / ABP vNext 框架  
+> ⏱️ **需要多久？** 从头读到尾约 30 分钟，之后查哪节用哪节
+
+---
+
+## 🌟 在开始之前：用一个生活比喻理解"接口调用"
+
+想象你去餐厅吃饭：
+
+```
+你（Python 程序）
+    ↓ 点菜（发请求）
+服务员（HTTP 接口）
+    ↓ 传单给厨房
+厨房（C# ABP 后端）
+    ↓ 做好菜
+服务员（HTTP 接口）
+    ↓ 端给你
+你（Python 程序）拿到菜（返回数据）✅
+```
+
+- **点菜单** = 你发送的参数
+- **点菜方式** = GET / POST 请求
+- **菜** = 接口返回给你的数据
+
+**参数放错地方，就像把点菜单塞进厨房窗口而不交给服务员 → 服务员不知道你要啥 → 出错！**
 
 ---
 
 ## 📖 目录
 
-1. [准备工作](#0-准备工作)
-2. [基础：发一个最简单的请求](#1-基础发一个最简单的请求)
-3. [情景A：参数全是简单参数](#2-情景a参数全是简单参数)
-4. [情景B：参数是复杂对象](#3-情景b参数是复杂对象json)
-5. [情景C：混合参数（简单+复杂）](#4-情景c混合参数简单复杂)
-6. [情景D：上传文件](#5-情景d上传文件)
-7. [请求头 Headers 详解](#6-必须知道的请求头-headers)
-8. [常见错误与解决方法](#7-常见错误与解决方法)
-9. [实战综合例子](#8-实战综合例子)
-10. [参考资料](#参考资料)
+0. [准备工作（5分钟搞定）](#0-准备工作)
+1. [先认识 GET 和 POST](#1-先认识-get-和-post)
+2. [情景A：查数据（全是简单参数）](#2-情景a查数据全是简单参数)
+3. [情景B：新建/修改数据（复杂对象参数）](#3-情景b新建修改数据复杂对象参数)
+4. [情景C：又有简单参数又有复杂对象](#4-情景c又有简单参数又有复杂对象)
+5. [情景D：上传文件](#5-情景d上传文件)
+6. [⭐ ABP 框架专项指南](#6-abp-框架专项指南重点)
+7. [常见报错急救手册](#7-常见报错急救手册)
+8. [完整实战例子](#8-完整实战例子)
+9. [参考资料](#参考资料)
 
 ---
 
 ## 0. 准备工作
 
-### 安装 requests 库
+### 第一步：安装 requests 库
 
-打开终端（命令行），运行：
+打开「命令提示符」或「终端」，输入：
 
 ```bash
 pip install requests
 ```
 
-安装成功后，在 Python 代码里这样引入：
+看到 `Successfully installed requests-x.x.x` 就成功了 🎉
+
+### 第二步：在代码最开头加这一行
 
 ```python
-import requests
+import requests  # 以后每次写代码都要加这行！
 ```
 
-### 几个必须理解的概念
+### 第三步：认识三个关键词
 
-| 概念 | 大白话解释 |
-|------|-----------|
-| **HTTP 请求** | 你的程序给服务器"打电话"，说"我要XXX" |
-| **接口/API** | 服务器开放的"服务窗口"，每个窗口负责一件事 |
-| **GET 请求** | 查询数据（不改变服务器数据） |
-| **POST 请求** | 提交/新建数据（会改变服务器数据） |
-| **参数** | 你请求时带过去的"附加信息" |
-| **响应** | 服务器回给你的"答复" |
-| **状态码** | 服务器告诉你请求成不成功的数字（200=成功，400=你传错了，500=服务器自己崩了） |
-
-### 理解"参数放在哪里"
-
-HTTP 请求传参有三个地方可以放：
-
-```
-┌─────────────────────────────────────────────────────┐
-│  URL 地址栏                                          │
-│  https://api.example.com/users?name=张三&age=25     │
-│                                ↑这部分叫 Query 参数  │
-├─────────────────────────────────────────────────────┤
-│  请求头 Headers                                      │
-│  Content-Type: application/json                      │
-│  Authorization: Bearer xxxxx                         │
-├─────────────────────────────────────────────────────┤
-│  请求体 Body（只有 POST/PUT 才有）                    │
-│  {"name": "张三", "age": 25}   ← JSON 格式           │
-│  name=张三&age=25              ← 表单格式             │
-└─────────────────────────────────────────────────────┘
-```
-
-> 💡 **关键认知：** C# 接口用 `[FromQuery]` 从 URL 取参，用 `[FromBody]` 从 Body 取参。你传错地方，接口就收不到！
+| 词 | 意思 | 生活类比 |
+|----|------|---------|
+| `params=` | 参数放 URL 里 | 在餐厅门口的牌子上写"我要一份炒饭" |
+| `json=` | 参数放请求体里（JSON格式） | 把详细订单装在信封里递给服务员 |
+| `data=` | 参数放请求体里（表单格式） | 填写纸质表单交给服务员 |
 
 ---
 
-## 1. 基础：发一个最简单的请求
+## 1. 先认识 GET 和 POST
 
-### 发 GET 请求
+### GET：我想"拿"点什么
+
+- 用于**查询数据**，不改变任何东西
+- 参数直接跟在网址后面，比如：`/api/users?name=张三`
+- 就像在图书馆查书目，你只是在看，不是在借
 
 ```python
 import requests
 
-# 发一个最简单的 GET 请求
-response = requests.get("https://jsonplaceholder.typicode.com/posts/1")
+response = requests.get("http://你的系统地址/api/app/user")
 
-# 查看状态码（200 = 成功）
-print("状态码：", response.status_code)
-
-# 查看返回的内容（文本格式）
-print("返回内容：", response.text)
-
-# 如果返回的是 JSON，直接转成 Python 字典
-data = response.json()
-print("标题：", data["title"])
+print(response.status_code)  # 200 = 成功，404 = 没找到，500 = 服务器出问题了
+print(response.json())       # 打印返回的数据
 ```
 
-**输出结果：**
-```
-状态码：200
-返回内容：{"userId":1,"id":1,"title":"sunt aut facere...","body":"quia et suscipit..."}
-标题：sunt aut facere repellat provident occaecati excepturi optio reprehenderit
-```
+### POST：我想"提交"点什么
 
-### response 对象常用属性速查
-
-```python
-response = requests.get("https://example.com/api")
-
-response.status_code   # 状态码，200 表示成功
-response.text          # 响应内容（字符串）
-response.json()        # 响应内容（自动转成 Python 字典）
-response.headers       # 响应头
-response.content       # 响应内容（字节，用于下载文件）
-```
-
----
-
-## 2. 情景A：参数全是简单参数
-
-> **对应 C# 接口写法：** `[FromQuery]` 或 GET 接口不写任何属性
-
-### 场景举例
-
-C# 接口代码：
-```csharp
-// 查询用户列表接口
-[HttpGet("users")]
-public IActionResult GetUsers([FromQuery] string name, [FromQuery] int age)
-{
-    // name 和 age 都从 URL 的 ?name=xxx&age=xxx 里取
-    return Ok(new { name, age });
-}
-```
-
-**这种接口，参数在 URL 里，你需要用 `params=` 传参。**
-
----
-
-### ✅ 方法一：直接把参数拼进 URL（不推荐，容易出错）
+- 用于**新建、修改、删除数据**，会改变数据库
+- 参数放在"请求体"里（看不见的地方）
+- 就像填完表单交给柜台，柜台去帮你办理业务
 
 ```python
 import requests
 
-# 手动拼参数（不推荐，特殊字符会出错）
-url = "http://localhost:5000/api/users?name=张三&age=25"
-response = requests.get(url)
+response = requests.post("http://你的系统地址/api/app/user")
+
+print(response.status_code)
 print(response.json())
 ```
 
+### 状态码速查表
+
+| 状态码 | 意思 | 你该怎么办 |
+|--------|------|-----------|
+| **200** | ✅ 成功 | 完美，取数据用就行 |
+| **201** | ✅ 创建成功 | 新建操作成功 |
+| **400** | ❌ 你的请求有问题 | 检查参数名字/格式是否正确 |
+| **401** | 🔒 没登录/Token失效 | 重新获取 Token |
+| **403** | 🚫 没权限 | 联系管理员 |
+| **404** | 🔍 接口地址不存在 | 检查URL是否拼对了 |
+| **415** | 📄 格式不对 | 检查是用 `json=` 还是 `data=` |
+| **500** | 💥 服务器崩了 | 联系开发同事 |
+
 ---
 
-### ✅ 方法二：用 params 字典传参（推荐！）
+## 2. 情景A：查数据（全是简单参数）
+
+> 🏷️ 特征：接口是 **GET 请求**，参数都是简单的文字/数字  
+> 🔧 对应 ABP：`GetAsync` / `GetListAsync` 开头的方法
+
+### 什么是"简单参数"？
+
+简单参数就是一个名字对一个值，比如：
+- `姓名=张三`
+- `年龄=25`  
+- `部门=研发部`
+
+### 怎么传？用 `params=`
 
 ```python
 import requests
 
-url = "http://localhost:5000/api/users"
+# 🌰 例子1：查询用户列表
+url = "http://localhost:5000/api/app/user"
 
-# 把参数放到字典里
+# 把参数写成字典（大括号包起来的键值对）
 params = {
-    "name": "张三",
-    "age": 25
+    "filter": "张三",       # 搜索关键词
+    "skipCount": 0,          # 从第几条开始（0表示第一条）
+    "maxResultCount": 10     # 最多返回几条
 }
 
-# 传入 params 参数，requests 会自动拼成 ?name=张三&age=25
 response = requests.get(url, params=params)
 
-print("实际请求的 URL：", response.url)
-# 输出：http://localhost:5000/api/users?name=%E5%BC%A0%E4%B8%89&age=25
-# （中文会自动编码，不用担心）
+# 查看实际发出的完整地址（用于调试）
+print("完整URL：", response.url)
+# 输出：http://localhost:5000/api/app/user?filter=张三&skipCount=0&maxResultCount=10
 
-print("返回结果：", response.json())
+print("状态码：", response.status_code)
+print("返回数据：", response.json())
 ```
 
-> 🎯 **为什么推荐 params=？** 
-> 因为 requests 会自动处理中文、特殊字符的编码，你不用手动处理 `urllib.quote()`。
-
----
-
-### ✅ 多个同名参数（传数组）
-
-有时候接口要接收多个相同的参数名，比如 `?ids=1&ids=2&ids=3`：
+```python
+# 🌰 例子2：查询单个用户（通过ID）
+user_id = "abc123"
+response = requests.get(f"http://localhost:5000/api/app/user/{user_id}")
+print(response.json())
+```
 
 ```python
-import requests
-
-url = "http://localhost:5000/api/users/batch"
-
-# 方法：传一个列表
+# 🌰 例子3：带时间范围的查询
 params = {
-    "ids": [1, 2, 3]
+    "startDate": "2026-01-01",
+    "endDate": "2026-02-28",
+    "status": 1,          # 数字也可以直接传
+    "isActive": "true"    # 布尔值传字符串 "true" / "false"
 }
-
 response = requests.get(url, params=params)
-print("实际 URL：", response.url)
-# 输出：http://localhost:5000/api/users/batch?ids=1&ids=2&ids=3
 ```
+
+> 💡 **小技巧：** 不确定参数名叫什么？让开发同事打开接口文档（Swagger），里面有所有参数的名字！
 
 ---
 
-### POST 表单传参（Form Data）
+## 3. 情景B：新建/修改数据（复杂对象参数）
 
-如果是 POST 接口，但参数仍然是简单的键值对（表单格式）：
+> 🏷️ 特征：接口是 **POST / PUT 请求**，参数是一个包含多个字段的"对象"  
+> 🔧 对应 ABP：`CreateAsync` / `UpdateAsync` 开头的方法
 
-C# 接口：
-```csharp
-[HttpPost("login")]
-public IActionResult Login([FromForm] string username, [FromForm] string password)
-{
-    return Ok("登录成功");
-}
-```
+### 什么是"复杂对象参数"？
 
-Python 调用：
-```python
-import requests
+不是单个值，而是一组相关的数据合在一起，比如创建一个用户需要：
+- 姓名、邮箱、手机号、角色……
 
-url = "http://localhost:5000/api/login"
+这些数据打包成一个"对象"传过去。
 
-# 用 data= 传表单参数（Content-Type 会自动设为 application/x-www-form-urlencoded）
-data = {
-    "username": "admin",
-    "password": "123456"
-}
-
-response = requests.post(url, data=data)
-print(response.text)
-```
-
-> ⚠️ **注意：** `data=` 是表单格式，`json=` 是 JSON 格式，两者不能混用！
-
----
-
-## 3. 情景B：参数是复杂对象（JSON）
-
-> **对应 C# 接口写法：** `[FromBody]`，接收一个对象/模型
-
-这是最常见也是最容易出错的场景！
-
-### 场景举例
-
-C# 接口代码：
-```csharp
-// 创建订单接口
-public class CreateOrderRequest
-{
-    public string ProductName { get; set; }
-    public int Quantity { get; set; }
-    public decimal Price { get; set; }
-}
-
-[HttpPost("orders")]
-public IActionResult CreateOrder([FromBody] CreateOrderRequest request)
-{
-    // request 从请求的 Body 里读，格式是 JSON
-    return Ok(request);
-}
-```
-
-**这种接口，你需要把参数放在请求 Body 里，格式是 JSON。**
-
----
-
-### ✅ 方法：用 json= 传参（推荐！）
+### 怎么传？用 `json=`（注意！不是 `data=`！）
 
 ```python
 import requests
 
-url = "http://localhost:5000/api/orders"
+# 🌰 例子1：创建新用户
+url = "http://localhost:5000/api/app/user"
 
-# 把对象写成 Python 字典
+# 把要新建的数据写成字典
 body = {
-    "productName": "苹果手机",  # 注意：C# 通常用驼峰命名，Python 传参要匹配！
-    "quantity": 2,
-    "price": 9999.00
+    "userName": "zhangsan",
+    "name": "张三",
+    "email": "zhangsan@company.com",
+    "phoneNumber": "13800138000",
+    "password": "Abc@123456"
 }
 
-# 用 json= 传参，requests 自动：
-# 1. 把字典转成 JSON 字符串
-# 2. 设置 Content-Type: application/json
+# ⚠️ 关键：用 json= 传，不是 data=！
 response = requests.post(url, json=body)
 
 print("状态码：", response.status_code)
-print("返回结果：", response.json())
+print("返回数据：", response.json())
 ```
 
-> 🎯 **`json=` 的魔法：** 
-> - 自动把 Python 字典 → JSON 字符串
-> - 自动添加请求头 `Content-Type: application/json`
-> - **C# 的 `[FromBody]` 需要这个请求头才能正确解析！**
-
----
-
-### ✅ 嵌套对象（对象里有对象）
-
-C# 接口：
-```csharp
-public class Address
-{
-    public string City { get; set; }
-    public string Street { get; set; }
-}
-
-public class CreateUserRequest
-{
-    public string Name { get; set; }
-    public int Age { get; set; }
-    public Address HomeAddress { get; set; }  // 嵌套对象
-}
-
-[HttpPost("users")]
-public IActionResult CreateUser([FromBody] CreateUserRequest request)
-{
-    return Ok(request);
-}
-```
-
-Python 调用：
 ```python
-import requests
+# 🌰 例子2：修改已有数据（PUT 请求）
+user_id = "abc-123-def"
+url = f"http://localhost:5000/api/app/user/{user_id}"
 
-url = "http://localhost:5000/api/users"
-
-# 嵌套对象 → 嵌套字典
 body = {
-    "name": "李四",
-    "age": 30,
-    "homeAddress": {           # 嵌套字典对应嵌套对象
-        "city": "深圳",
-        "street": "科技园路 88 号"
+    "name": "张三（已修改）",
+    "email": "zhangsan_new@company.com"
+}
+
+response = requests.put(url, json=body)
+print(response.json())
+```
+
+### 嵌套对象（对象里还有对象）
+
+```python
+# 🌰 例子3：创建客户（地址是一个嵌套的子对象）
+body = {
+    "companyName": "佛山科技公司",
+    "contactName": "李经理",
+    "phoneNumber": "075712345678",
+    "address": {                    # ← 这里是嵌套对象，对应的是个子字典
+        "country": "中国",
+        "province": "广东",
+        "city": "佛山",
+        "street": "禅城区季华路 100 号"
     }
 }
 
-response = requests.post(url, json=body)
+response = requests.post("http://localhost:5000/api/app/customer", json=body)
 print(response.json())
 ```
 
----
+### 列表参数（有多个条目的数据）
 
-### ✅ 列表参数（对象里有数组）
-
-C# 接口：
-```csharp
-public class CreateOrderRequest
-{
-    public string CustomerName { get; set; }
-    public List<OrderItem> Items { get; set; }  // 列表
-}
-
-public class OrderItem
-{
-    public string ProductName { get; set; }
-    public int Quantity { get; set; }
-}
-
-[HttpPost("orders")]
-public IActionResult CreateOrder([FromBody] CreateOrderRequest request) { ... }
-```
-
-Python 调用：
 ```python
-import requests
-
-url = "http://localhost:5000/api/orders"
-
+# 🌰 例子4：创建订单（包含多个商品明细）
 body = {
-    "customerName": "王五",
-    "items": [                    # 列表 → Python 的 list
+    "customerId": "cust-001",
+    "remark": "请尽快发货",
+    "items": [                      # ← 这是一个列表，用方括号
         {
-            "productName": "键盘",
-            "quantity": 1
+            "productCode": "P001",
+            "productName": "工业传感器",
+            "quantity": 5,
+            "unitPrice": 320.00
         },
         {
-            "productName": "鼠标",
-            "quantity": 2
-        },
-        {
-            "productName": "显示器",
-            "quantity": 1
+            "productCode": "P002",
+            "productName": "控制器模块",
+            "quantity": 2,
+            "unitPrice": 1500.00
         }
     ]
 }
 
-response = requests.post(url, json=body)
+response = requests.post("http://localhost:5000/api/app/order", json=body)
 print(response.json())
 ```
 
----
-
-### ✅ 直接传一个列表（Body 就是数组）
-
-C# 接口：
-```csharp
-[HttpPost("users/batch")]
-public IActionResult BatchCreateUsers([FromBody] List<string> usernames)
-{
-    return Ok(usernames);
-}
-```
-
-Python 调用：
-```python
-import requests
-
-url = "http://localhost:5000/api/users/batch"
-
-# Body 直接是一个列表
-body = ["张三", "李四", "王五"]
-
-response = requests.post(url, json=body)
-print(response.json())
-```
-
-> ⚠️ **常见误区：** 很多新手会把列表塞进字典里，比如 `{"data": ["张三","李四"]}` 传过去，但接口期望的是直接的数组 `["张三","李四"]`，就会报错！要看接口定义决定怎么传。
+> 🎓 **记忆口诀：**
+> - 字典 `{}` → 对象（一组相关字段）
+> - 列表 `[]` → 数组（多条同类数据）
+> - 嵌套字典 → 对象里有对象
+> - 字典里套列表 → 对象里有数组
 
 ---
 
-## 4. 情景C：混合参数（简单+复杂）
+## 4. 情景C：又有简单参数又有复杂对象
 
-这是最"复杂"的场景，接口同时需要 URL 里的简单参数 **和** Body 里的复杂对象。
+> 🏷️ 特征：一个接口里，**URL 需要简单参数，Body 里需要复杂对象**  
+> 🔧 对应 ABP：带有路由ID 且需要传 DTO 对象的接口
 
-### 场景一：URL 参数 + JSON Body
+### 怎么传？`params=` 和 `json=` **同时写**！
 
-C# 接口：
-```csharp
-// 给指定用户创建订单
-[HttpPost("users/{userId}/orders")]
-public IActionResult CreateOrder(
-    int userId,              // 来自路由
-    [FromQuery] string source,   // 来自 URL 查询参数
-    [FromBody] CreateOrderRequest request  // 来自 Body
-)
-{
-    return Ok(new { userId, source, request });
-}
-```
-
-Python 调用：
 ```python
 import requests
 
-# URL 里包含路由参数和查询参数
-url = "http://localhost:5000/api/users/123/orders"
+# 🌰 例子1：给指定客户创建合同
+# URL：/api/app/contract?source=mobile
+# Body：合同详情对象
 
-# URL 查询参数
+url = "http://localhost:5000/api/app/contract"
+
+# 简单参数 → params=（会跑到 URL 里）
 params = {
-    "source": "mobile"  # 拼成 ?source=mobile
+    "source": "mobile",      # 来源渠道
+    "tenantId": "tenant-001" # 租户ID
 }
 
-# Body（JSON 格式）
+# 复杂对象 → json=（会进入 Body）
 body = {
-    "productName": "耳机",
-    "quantity": 1,
-    "price": 299.00
+    "customerId": "cust-001",
+    "contractName": "2026年设备采购合同",
+    "totalAmount": 58000.00,
+    "startDate": "2026-03-01",
+    "endDate": "2027-02-28"
 }
 
-# params 和 json 同时传！
+# 两个参数同时写，互不干扰！
 response = requests.post(url, params=params, json=body)
 
-print("实际 URL：", response.url)
-# http://localhost:5000/api/users/123/orders?source=mobile
+print("实际请求URL：", response.url)
+# http://localhost:5000/api/app/contract?source=mobile&tenantId=tenant-001
 print("返回结果：", response.json())
 ```
 
-> 🎯 **关键点：** `params=` 和 `json=` 可以同时使用，互不干扰！
-> - `params=` → 拼到 URL 后面
-> - `json=` → 放到 Body 里
-
----
-
-### 场景二：URL 参数 + 表单 Body
-
-C# 接口：
-```csharp
-[HttpPost("upload/info")]
-public IActionResult UploadInfo(
-    [FromQuery] string category,
-    [FromForm] string title,
-    [FromForm] string description
-)
-{
-    return Ok(new { category, title, description });
-}
-```
-
-Python 调用：
 ```python
-import requests
-
-url = "http://localhost:5000/api/upload/info"
+# 🌰 例子2：更新某个记录（URL里有ID，Body里有修改内容）
+record_id = "rec-20260301-001"
+url = f"http://localhost:5000/api/app/workorder/{record_id}"
 
 # URL 查询参数
-params = {
-    "category": "document"
-}
+params = {"notify": "true"}  # 是否发通知
 
-# 表单参数
-form_data = {
-    "title": "季度报告",
-    "description": "2026年第一季度财务报告"
-}
-
-# params 和 data 同时传
-response = requests.post(url, params=params, data=form_data)
-print(response.json())
-```
-
----
-
-### 场景三：复杂对象嵌套复杂对象（深度嵌套）
-
-```python
-import requests
-
-url = "http://localhost:5000/api/company"
-
-# 深度嵌套，只要保持字典结构对应 C# 类结构即可
+# Body：要修改的字段
 body = {
-    "companyName": "科技有限公司",
-    "address": {
-        "province": "广东省",
-        "city": "佛山市",
-        "detail": "禅城区某某路 1 号"
-    },
-    "contacts": [
-        {
-            "name": "张总",
-            "phone": "13800138000",
-            "role": "CEO",
-            "socialMedia": {
-                "wechat": "zhangzong_666",
-                "linkedin": "zhang-ceo"
-            }
-        },
-        {
-            "name": "李经理",
-            "phone": "13900139000",
-            "role": "CTO",
-            "socialMedia": {
-                "wechat": "li_cto"
-            }
-        }
-    ],
-    "establishedYear": 2020,
-    "isPublicListed": False  # Python 的 False → JSON 的 false（自动转换）
+    "status": 2,
+    "handlerName": "王师傅",
+    "remark": "已完成维修，更换了三个零件"
 }
 
-response = requests.post(url, json=body)
+response = requests.put(url, params=params, json=body)
 print(response.json())
 ```
-
-> 💡 **Python ↔ JSON 类型对照：**
-> 
-> | Python | JSON |
-> |--------|------|
-> | `dict` | `{}` 对象 |
-> | `list` | `[]` 数组 |
-> | `str` | `"字符串"` |
-> | `int/float` | 数字 |
-> | `True` | `true` |
-> | `False` | `false` |
-> | `None` | `null` |
 
 ---
 
 ## 5. 情景D：上传文件
 
-### 场景一：只上传文件
+> 🏷️ 特征：需要上传图片、文档、Excel 等文件  
+> ⚠️ **特别注意：用了 `files=` 就不能手动设置 Content-Type！**
 
-C# 接口：
-```csharp
-[HttpPost("files/upload")]
-public IActionResult Upload(IFormFile file)
-{
-    var fileName = file.FileName;
-    // 处理文件...
-    return Ok(new { fileName });
-}
-```
+### 只上传文件
 
-Python 调用：
 ```python
 import requests
 
-url = "http://localhost:5000/api/files/upload"
+url = "http://localhost:5000/api/app/file/upload"
 
-# 打开文件，以二进制模式读取
-with open("report.pdf", "rb") as f:
+# 打开文件（"rb" 表示以二进制方式读取，上传文件必须这样）
+with open("合同扫描件.pdf", "rb") as f:
     files = {
         # 格式：{"接口里的参数名": (文件名, 文件内容, 文件类型)}
-        "file": ("report.pdf", f, "application/pdf")
+        "file": ("合同扫描件.pdf", f, "application/pdf")
     }
     response = requests.post(url, files=files)
 
 print(response.json())
 ```
 
-> ⚠️ **注意：** 用了 `files=` 后，不要再手动设置 `Content-Type`！
-> requests 会自动设置 `Content-Type: multipart/form-data`，手动设置反而会报错。
+### 上传文件 + 同时传其他参数
 
----
-
-### 场景二：上传文件 + 同时传其他参数
-
-C# 接口：
-```csharp
-[HttpPost("files/upload")]
-public IActionResult Upload(
-    IFormFile file,
-    [FromForm] string description,
-    [FromForm] string category
-)
-{
-    return Ok(new { file.FileName, description, category });
-}
-```
-
-Python 调用：
 ```python
 import requests
 
-url = "http://localhost:5000/api/files/upload"
+url = "http://localhost:5000/api/app/attachment"
 
-with open("report.pdf", "rb") as f:
-    # 文件放 files=
+with open("产品图片.jpg", "rb") as f:
     files = {
-        "file": ("report.pdf", f, "application/pdf")
+        "file": ("产品图片.jpg", f, "image/jpeg")
     }
-    # 其他表单参数放 data=
+    # 其他文字参数用 data=（注意：有 files= 时，其他参数必须用 data= 不能用 json=）
     data = {
-        "description": "2026年Q1财务报告",
-        "category": "finance"
+        "relatedId": "prod-001",    # 关联的产品ID
+        "fileType": "product_image",
+        "description": "主图-正面"
     }
-    # 同时传 files 和 data
     response = requests.post(url, files=files, data=data)
 
 print(response.json())
 ```
 
+> ⚠️ **记住这个规则：**
+> - 有文件 → `files=` + `data=`（其他参数）
+> - 没文件，传对象 → `json=`
+> - 不能同时用 `files=` 和 `json=`！
+
 ---
 
-### 场景三：上传多个文件
+## 6. ⭐ ABP 框架专项指南（重点）
 
-```python
-import requests
+> 这一节是专门针对你们公司 C# ABP 系统的内容，**跟普通接口有些不同！**
 
-url = "http://localhost:5000/api/files/batch-upload"
+### 6.1 认识两个版本的 ABP
 
-with open("file1.jpg", "rb") as f1, open("file2.jpg", "rb") as f2:
-    files = [
-        ("files", ("file1.jpg", f1, "image/jpeg")),
-        ("files", ("file2.jpg", f2, "image/jpeg")),
-    ]
-    response = requests.post(url, files=files)
+你可能接触到两个版本，它们**接口地址和返回格式都不一样**：
 
-print(response.json())
+| 对比项 | 老版 ABP（ASP.NET Boilerplate） | 新版 ABP（ABP vNext / ABP Framework） |
+|--------|-------------------------------|--------------------------------------|
+| 官网 | aspnetboilerplate.com | abp.io |
+| 接口地址前缀 | `/api/services/` | `/api/app/` |
+| 返回数据 | 有 `result` 包装层 | **直接返回数据**，无包装 |
+| 怎么判断 | 看接口文档或问开发 | 同左 |
+
+---
+
+### 6.2 新版 ABP（ABP Framework / vNext）
+
+#### 接口地址规律
+
+ABP vNext 会把 C# 的服务名自动变成接口路径，规律是：
+
+```
+/api/app/{服务名（小写去掉AppService）}/{方法名（小写去掉Async）}
 ```
 
----
+举例：
+- `UserAppService.GetListAsync()` → `GET /api/app/user`
+- `UserAppService.GetAsync(id)` → `GET /api/app/user/{id}`
+- `OrderAppService.CreateAsync()` → `POST /api/app/order`
+- `OrderAppService.UpdateAsync(id)` → `PUT /api/app/order/{id}`
+- `OrderAppService.DeleteAsync(id)` → `DELETE /api/app/order/{id}`
 
-## 6. 必须知道的：请求头 Headers
+#### HTTP 方法自动映射规律
 
-### Content-Type 是什么？
+| C# 方法名开头 | 对应 HTTP 方法 | Python 用法 |
+|--------------|--------------|------------|
+| `Get` / `Find` / `List` | GET | `requests.get()` |
+| `Create` / `Add` | POST | `requests.post()` |
+| `Update` / `Edit` / `Set` | PUT | `requests.put()` |
+| `Delete` / `Remove` | DELETE | `requests.delete()` |
+| 其他（自定义方法） | POST | `requests.post()` |
 
-Content-Type 告诉服务器："我发过来的数据是什么格式的"。
-如果你告诉服务器格式 A，但实际发的是格式 B，服务器就会懵——这就是为什么会报 **415 错误**！
+#### 参数在哪里传（ABP vNext 的核心规则）
 
-### 常见 Content-Type 对照表
+ABP vNext **不写 `[FromBody]` 等标注**，但它有内部规律：
 
-| 场景 | Content-Type | requests 写法 |
-|------|-------------|--------------|
-| 发 JSON 数据 | `application/json` | `requests.post(url, json=data)` 自动设置 |
-| 发表单数据 | `application/x-www-form-urlencoded` | `requests.post(url, data=data)` 自动设置 |
-| 上传文件 | `multipart/form-data` | `requests.post(url, files=files)` 自动设置 |
+```
+GET / DELETE 请求：
+  → 不管参数是什么类型，全部用 params= 传到 URL 里
 
-> 🎯 **黄金原则：** 用 `json=`、`data=`、`files=` 参数时，**不要手动设置 Content-Type**，requests 会自动处理！
+POST / PUT 请求：
+  → 简单类型（文字、数字、ID）→ 用 params= 传
+  → 复杂类型（一个DTO对象）  → 用 json= 传到 Body 里
+  → 如果既有简单又有复杂     → params= 和 json= 同时用！
+```
 
-### 什么时候需要手动设置 Headers？
+#### 返回格式（ABP vNext）
 
-1. **需要身份验证（Token）**
-2. **接口要求特定的 Accept 头**
-3. **需要传 Cookie**
+ABP vNext 直接返回数据，**没有 `result` 包装层**：
+
+```python
+response = requests.get(url, params=params)
+data = response.json()
+
+# 直接取数据，不需要 data["result"]
+print(data["items"])        # 列表数据
+print(data["totalCount"])   # 总数
+```
+
+#### 完整代码示例（ABP vNext）
 
 ```python
 import requests
 
-url = "http://localhost:5000/api/protected/data"
+BASE_URL = "http://localhost:5000"
 
-# 手动设置请求头
-headers = {
-    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsIn...",  # Token 认证
-    "Accept": "application/json",
-    "X-Custom-Header": "my-value"  # 自定义头
+# 如果需要认证，加上 Token
+HEADERS = {
+    "Authorization": "Bearer 你的Token"
 }
 
-body = {"query": "test"}
+# ── 查询列表 ──────────────────────────────────
+response = requests.get(
+    f"{BASE_URL}/api/app/user",
+    params={
+        "filter": "张",
+        "skipCount": 0,
+        "maxResultCount": 20
+    },
+    headers=HEADERS
+)
+result = response.json()
+print(f"共 {result['totalCount']} 条，本页 {len(result['items'])} 条")
 
-# headers 和 json 可以同时传
-response = requests.post(url, headers=headers, json=body)
+# ── 查询单条 ──────────────────────────────────
+user_id = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+response = requests.get(
+    f"{BASE_URL}/api/app/user/{user_id}",
+    headers=HEADERS
+)
+user = response.json()
+print(f"用户姓名：{user['name']}")
+
+# ── 新建 ──────────────────────────────────────
+response = requests.post(
+    f"{BASE_URL}/api/app/user",
+    json={
+        "userName": "lisi",
+        "name": "李四",
+        "email": "lisi@company.com",
+        "password": "Admin@123"
+    },
+    headers=HEADERS
+)
+print(f"新建结果：{response.status_code}")
+
+# ── 修改 ──────────────────────────────────────
+response = requests.put(
+    f"{BASE_URL}/api/app/user/{user_id}",
+    json={
+        "name": "李四（已修改）",
+        "email": "lisi_new@company.com"
+    },
+    headers=HEADERS
+)
+print(f"修改结果：{response.status_code}")
+
+# ── 删除 ──────────────────────────────────────
+response = requests.delete(
+    f"{BASE_URL}/api/app/user/{user_id}",
+    headers=HEADERS
+)
+print(f"删除结果：{response.status_code}")
+```
+
+---
+
+### 6.3 老版 ABP（ASP.NET Boilerplate）
+
+#### 接口地址格式
+
+```
+/api/services/{命名空间}/{服务名}/{方法名（camelCase）}
+```
+
+例如：
+- `TaskAppService.GetTasks()` → `GET /api/services/tasksystem/task/getTasks`
+- `TaskAppService.CreateTask()` → `POST /api/services/tasksystem/task/createTask`
+
+#### ⚠️ 老版 ABP 的返回格式有包装层！
+
+老版 ABP 的返回 JSON 长这样：
+```json
+{
+    "result": {
+        "items": [...],
+        "totalCount": 100
+    },
+    "targetUrl": null,
+    "success": true,
+    "error": null,
+    "unAuthorizedRequest": false,
+    "__abp": true
+}
+```
+
+取数据时**必须先取 `result` 字段**：
+
+```python
+import requests
+
+response = requests.get(
+    "http://localhost:5000/api/services/myapp/task/getTasks",
+    params={"status": 1}
+)
+
+data = response.json()
+
+# ⚠️ 老版 ABP 必须先取 result！
+if data["success"]:
+    tasks = data["result"]["items"]
+    print(f"获取到 {len(tasks)} 条任务")
+else:
+    print(f"出错了：{data['error']['message']}")
+```
+
+对比新版（ABP vNext）：
+```python
+# 新版 ABP vNext，直接取数据
+response = requests.get("http://localhost:5000/api/app/task", params={"status": 1})
+data = response.json()
+tasks = data["items"]  # 直接取，没有 result 包装！
+```
+
+---
+
+### 6.4 如何获取登录 Token（两个版本通用）
+
+大多数接口都需要先登录获取 Token，再带着 Token 去调其他接口。
+
+```python
+import requests
+
+# ── 第一步：登录获取 Token ──────────────────
+login_response = requests.post(
+    "http://localhost:5000/api/account/login",  # 登录接口地址（问开发同事确认）
+    json={
+        "userNameOrEmailAddress": "admin",
+        "password": "Admin@123"
+    }
+)
+
+login_data = login_response.json()
+
+# ABP vNext 的登录返回
+token = login_data.get("accessToken") or login_data.get("token")
+
+# 老版 ABP 的登录返回（在 result 里）
+# token = login_data["result"]["accessToken"]
+
+print(f"Token 获取成功：{token[:30]}...")
+
+# ── 第二步：带着 Token 调其他接口 ──────────
+headers = {
+    "Authorization": f"Bearer {token}"
+}
+
+response = requests.get(
+    "http://localhost:5000/api/app/user",
+    params={"maxResultCount": 10},
+    headers=headers
+)
 print(response.json())
 ```
 
 ---
 
-## 7. 常见错误与解决方法
+### 6.5 多租户系统（如果有 TenantId 的话）
 
-### ❌ 400 Bad Request（请求格式错误）
-
-**原因：** 参数格式不对，或者缺少必填参数
+如果你的 ABP 系统是多租户的，有些接口需要传租户信息：
 
 ```python
-# ❌ 错误：用 data= 传 JSON Body 给 [FromBody] 接口
-response = requests.post(url, data={"name": "张三"})
+# 方法1：通过请求头传租户ID
+headers = {
+    "Authorization": "Bearer your_token",
+    "__tenant": "租户名称或ID"  # ABP 多租户标识头
+}
 
-# ✅ 正确：用 json= 传 JSON Body
-response = requests.post(url, json={"name": "张三"})
+# 方法2：通过 URL 传
+params = {
+    "tenantId": "your-tenant-id"
+}
 ```
 
-**排查步骤：**
-1. 检查接口文档，确认参数名是否拼写正确
-2. 确认是 `[FromBody]` 还是 `[FromQuery]`，选对传参方式
-3. 打印请求内容检查：
+---
+
+## 7. 常见报错急救手册
+
+### 🚨 报错：400 Bad Request（请求格式有问题）
+
+**最常见原因和解决方法：**
 
 ```python
-import requests
+# ❌ 问题：该用 json= 的地方用了 data=
+response = requests.post(url, data={"name": "张三"})
+# ✅ 解决：改成 json=
+response = requests.post(url, json={"name": "张三"})
 
+# ❌ 问题：字段名写错了（C# 的属性名是大小写敏感的！）
+json={"UserName": "zhangsan"}   # 错：大写 U 和 N
+json={"userName": "zhangsan"}   # ✅ 对：小写 u 和大写 N
+```
+
+**调试技巧：打印请求内容看看发出了什么**
+
+```python
 response = requests.post(url, json=body)
 
-# 调试：看实际发出的请求
-print("请求 URL：", response.request.url)
-print("请求头：", response.request.headers)
+print("=== 调试信息 ===")
+print("请求URL：", response.request.url)
+print("请求头：", dict(response.request.headers))
 print("请求体：", response.request.body)
-print("响应：", response.text)
+print("响应码：", response.status_code)
+print("响应内容：", response.text)
+print("================")
 ```
 
 ---
 
-### ❌ 415 Unsupported Media Type（不支持的媒体类型）
+### 🚨 报错：415 Unsupported Media Type（格式不支持）
 
-**原因：** Content-Type 不对，最常见是用了 `data=` 但 C# 接口期望的是 JSON
+```
+解决方法99%：把 data= 改成 json=
+
+requests.post(url, data={...})   ← ❌ data= 默认是表单格式
+requests.post(url, json={...})   ← ✅ json= 才是 JSON 格式
+```
+
+---
+
+### 🚨 报错：401 Unauthorized（没权限/未登录）
 
 ```python
-# ❌ 错误：data= 的 Content-Type 是 form-urlencoded，C# [FromBody] 不认识
-response = requests.post(url, data={"name": "张三"})
+# 原因：没带 Token 或 Token 过期
 
-# ✅ 正确：json= 的 Content-Type 是 application/json，C# [FromBody] 才能识别
-response = requests.post(url, json={"name": "张三"})
+# 解决：加上 Authorization 头
+headers = {"Authorization": "Bearer 你的Token"}
+response = requests.get(url, headers=headers)
+
+# 如果 Token 过期，重新登录获取新 Token
 ```
-
-**速查表：**
-
-| 报错 | 最可能原因 | 解决方法 |
-|------|-----------|---------|
-| 415 | 用了 `data=` 但接口要 `[FromBody]` | 改成 `json=` |
-| 415 | 手动设了错误的 Content-Type | 删掉手动设置的 Content-Type |
-| 400 | 字段名拼错 | 对照 C# 类的属性名，注意大小写 |
-| 400 | 缺少必填字段 | 检查接口文档 |
 
 ---
 
-### ❌ 接口收到的值是 null（C# 端为空）
-
-**原因：** 数据传到了错误的位置
+### 🚨 接口返回 200 但数据是 null 或空
 
 ```python
-# 假设 C# 接口是：[FromBody] CreateUserRequest request
+# 原因：参数传对了位置但字段名不匹配
 
-# ❌ 错误：把 JSON 放到了 URL 里
-response = requests.get(url, params={"name": "张三"})
+# 调试方法：先用 Postman/浏览器开发工具确认接口正常工作
+# 再对比 Python 代码发送的内容是否一致
 
-# ✅ 正确：JSON 应该放在 Body 里
-response = requests.post(url, json={"name": "张三"})
+response = requests.post(url, json=body)
+print("发出的内容：", response.request.body)  # 看这里
 ```
 
 ---
 
-### ❌ 连接超时
+### 🚨 连接报错 / 超时
 
 ```python
 import requests
 
 try:
-    # 设置超时时间（秒）：connect_timeout=5, read_timeout=30
-    response = requests.post(url, json=body, timeout=(5, 30))
+    response = requests.get(url, timeout=10)  # 设置10秒超时
     print(response.json())
-except requests.exceptions.ConnectTimeout:
-    print("连接超时，请检查服务器地址是否正确")
-except requests.exceptions.ReadTimeout:
-    print("读取超时，服务器响应太慢")
 except requests.exceptions.ConnectionError:
-    print("连接失败，请检查网络或服务器是否在运行")
+    print("❌ 连接失败！检查：1.系统是否在运行 2.IP/端口是否正确 3.网络是否通")
+except requests.exceptions.Timeout:
+    print("❌ 超时！系统响应太慢，或者网络有问题")
 ```
 
 ---
 
-## 8. 实战综合例子
+## 8. 完整实战例子
 
-### 例子：调用一个完整的"员工管理"系统接口
-
-场景描述：
-- 接口A：查询员工列表（简单参数）
-- 接口B：新建员工（复杂对象）
-- 接口C：给员工上传头像（文件 + 简单参数）
-- 接口D：更新员工信息（URL 参数 + JSON Body）
+### 场景：用 Python 操作 ABP vNext 的"工单管理"系统
 
 ```python
 import requests
 
-BASE_URL = "http://localhost:5000/api"
+# =================== 基础配置 ===================
+BASE_URL = "http://192.168.1.100:8080"  # 换成你们系统的地址
 
-# 公共请求头（如果需要 Token 认证）
-HEADERS = {
-    "Authorization": "Bearer eyJhbGciOiJIUzI1NiJ9..."
-}
-
-
-# ==================== 接口A：查询员工列表 ====================
-def get_employees(department=None, page=1, page_size=10):
-    """
-    C# 接口：GET /employees?department=xxx&page=1&pageSize=10
-    所有参数都是 [FromQuery]，用 params= 传
-    """
-    params = {
-        "page": page,
-        "pageSize": page_size
-    }
-    if department:
-        params["department"] = department
-
-    response = requests.get(
-        f"{BASE_URL}/employees",
-        params=params,
-        headers=HEADERS
-    )
-
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"查询失败：{response.status_code} - {response.text}")
-        return None
-
-
-# ==================== 接口B：新建员工 ====================
-def create_employee(name, age, department, position, salary, skills):
-    """
-    C# 接口：POST /employees
-    参数是 [FromBody] CreateEmployeeRequest
-    包含嵌套对象和列表
-    """
-    body = {
-        "name": name,
-        "age": age,
-        "department": department,
-        "position": position,
-        "salary": salary,
-        "skills": skills,           # 列表
-        "address": {                # 嵌套对象
-            "city": "佛山",
-            "detail": "禅城区"
-        }
-    }
-
+def get_token(username, password):
+    """登录并获取 Token"""
     response = requests.post(
-        f"{BASE_URL}/employees",
-        json=body,          # [FromBody] 必须用 json=
-        headers=HEADERS
-    )
-
-    if response.status_code == 201:
-        print("创建成功！")
-        return response.json()
-    else:
-        print(f"创建失败：{response.status_code} - {response.text}")
-        return None
-
-
-# ==================== 接口C：上传员工头像 ====================
-def upload_avatar(employee_id, avatar_path):
-    """
-    C# 接口：POST /employees/{id}/avatar?type=profile
-    文件用 multipart，URL 有查询参数
-    """
-    params = {"type": "profile"}  # URL 查询参数
-
-    with open(avatar_path, "rb") as f:
-        files = {
-            "avatar": (avatar_path, f, "image/jpeg")
+        f"{BASE_URL}/api/account/login",
+        json={
+            "userNameOrEmailAddress": username,
+            "password": password
         }
-        # 注意：上传文件时不要在 headers 里加 Content-Type！
-        upload_headers = {k: v for k, v in HEADERS.items()}
-
-        response = requests.post(
-            f"{BASE_URL}/employees/{employee_id}/avatar",
-            params=params,
-            files=files,
-            headers=upload_headers
-        )
-
+    )
     if response.status_code == 200:
-        print("头像上传成功！")
-        return response.json()
+        data = response.json()
+        return data.get("accessToken") or data.get("token")
     else:
-        print(f"上传失败：{response.status_code} - {response.text}")
+        print(f"登录失败：{response.text}")
         return None
 
 
-# ==================== 接口D：更新员工信息 ====================
-def update_employee(employee_id, department, update_data):
-    """
-    C# 接口：PUT /employees/{id}?department=xxx
-    URL 里有路由参数 + 查询参数，Body 里有 JSON 对象
-    """
-    params = {"department": department}  # URL 查询参数
+def make_headers(token):
+    """生成带 Token 的请求头"""
+    return {"Authorization": f"Bearer {token}"}
 
+
+# =================== 主程序 ===================
+# 1. 先登录
+TOKEN = get_token("admin", "Admin@123")
+if not TOKEN:
+    exit("登录失败，程序退出")
+
+HEADERS = make_headers(TOKEN)
+print("✅ 登录成功！")
+
+
+# 2. 查询工单列表
+print("\n📋 查询待处理工单...")
+response = requests.get(
+    f"{BASE_URL}/api/app/workOrder",
+    params={
+        "status": 0,           # 0=待处理
+        "skipCount": 0,
+        "maxResultCount": 50
+    },
+    headers=HEADERS
+)
+result = response.json()
+work_orders = result.get("items", [])
+print(f"找到 {len(work_orders)} 条待处理工单")
+
+for wo in work_orders[:3]:  # 只打印前3条
+    print(f"  - [{wo['id']}] {wo['title']} | 负责人：{wo.get('assigneeName', '未分配')}")
+
+
+# 3. 新建一条工单
+print("\n➕ 新建工单...")
+response = requests.post(
+    f"{BASE_URL}/api/app/workOrder",
+    json={
+        "title": "设备异常报警",
+        "description": "3号车间的PLC控制器报警，需要立即检查",
+        "priority": 1,              # 1=紧急
+        "deviceId": "dev-003",
+        "location": "3号车间",
+        "contactPhone": "13900139001"
+    },
+    headers=HEADERS
+)
+if response.status_code in [200, 201]:
+    new_wo = response.json()
+    print(f"✅ 工单创建成功！ID：{new_wo['id']}")
+    new_wo_id = new_wo['id']
+else:
+    print(f"❌ 创建失败：{response.text}")
+    new_wo_id = None
+
+
+# 4. 给工单分配负责人（URL参数+Body混合）
+if new_wo_id:
+    print("\n👤 分配负责人...")
     response = requests.put(
-        f"{BASE_URL}/employees/{employee_id}",
-        params=params,
-        json=update_data,   # Body JSON
+        f"{BASE_URL}/api/app/workOrder/{new_wo_id}",
+        params={"notify": "true"},   # URL参数：是否发通知
+        json={                        # Body：修改内容
+            "assigneeId": "user-001",
+            "expectedFinishTime": "2026-02-28T18:00:00",
+            "remark": "已分配给王师傅处理"
+        },
         headers=HEADERS
     )
-
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"更新失败：{response.status_code} - {response.text}")
-        return None
+    print(f"分配结果：{'✅ 成功' if response.status_code == 200 else '❌ 失败'}")
 
 
-# ==================== 主程序 ====================
-if __name__ == "__main__":
-    # 1. 查询研发部员工
-    print("=== 查询员工列表 ===")
-    employees = get_employees(department="研发部", page=1)
-    print(employees)
+# 5. 上传现场照片
+if new_wo_id:
+    print("\n📷 上传现场照片...")
+    try:
+        with open("现场照片.jpg", "rb") as f:
+            response = requests.post(
+                f"{BASE_URL}/api/app/workOrder/{new_wo_id}/attachment",
+                files={"file": ("现场照片.jpg", f, "image/jpeg")},
+                data={"fileType": "photo", "description": "设备报警现场"},
+                headers=HEADERS
+            )
+        print(f"上传结果：{'✅ 成功' if response.status_code == 200 else '❌ 失败'}")
+    except FileNotFoundError:
+        print("（跳过：文件不存在）")
 
-    # 2. 新建一个员工
-    print("\n=== 新建员工 ===")
-    new_employee = create_employee(
-        name="赵六",
-        age=28,
-        department="研发部",
-        position="后端工程师",
-        salary=20000,
-        skills=["Python", "C#", "Java", "Docker"]
-    )
-    print(new_employee)
 
-    # 3. 上传头像（假设新建员工 ID 是 101）
-    print("\n=== 上传头像 ===")
-    upload_avatar(employee_id=101, avatar_path="avatar.jpg")
-
-    # 4. 更新员工信息
-    print("\n=== 更新信息 ===")
-    result = update_employee(
-        employee_id=101,
-        department="研发部",
-        update_data={
-            "position": "高级后端工程师",
-            "salary": 25000
-        }
-    )
-    print(result)
+print("\n🎉 全部操作完成！")
 ```
 
 ---
 
-## 🗺️ 传参方式速查总结
+## 🗺️ 最终速查卡片（建议截图保存）
 
 ```
-你收到了一个接口，要判断怎么传参？按这个流程走：
-
-1. 是 GET 请求？
-   → 参数一定在 URL 里 → 用 params=
-
-2. 是 POST/PUT 请求，参数是简单键值对（文本/数字）？
-   → C# 是 [FromForm] → 用 data=
-   → C# 是 [FromQuery] → 用 params=
-
-3. 是 POST/PUT 请求，参数是一个对象（有很多字段/嵌套）？
-   → C# 是 [FromBody] → 用 json=
-
-4. 需要上传文件？
-   → 用 files=
-   → 如果同时有其他参数：files= + data=（不能 files= + json=！）
-
-5. 又有 URL 参数，又有 Body 参数？
-   → params= + json= 同时用（完全兼容）
+┌──────────────────────────────────────────────────────┐
+│              Python 调接口传参速查                     │
+├──────────────┬───────────────────────────────────────┤
+│ 接口类型      │ 怎么传参                               │
+├──────────────┼───────────────────────────────────────┤
+│ GET 查询      │ requests.get(url, params={...})        │
+│ POST 简单参数  │ requests.post(url, params={...})       │
+│ POST 复杂对象  │ requests.post(url, json={...})         │
+│ POST 混合     │ requests.post(url, params={}, json={}) │
+│ PUT 更新      │ requests.put(url, json={...})          │
+│ DELETE 删除   │ requests.delete(url)                   │
+│ 上传文件      │ requests.post(url, files={}, data={})  │
+├──────────────┼───────────────────────────────────────┤
+│ 加 Token     │ headers={"Authorization":"Bearer xxx"} │
+├──────────────┼───────────────────────────────────────┤
+│ ABP vNext    │ 直接 response.json() 取数据             │
+│ 老版 ABP     │ response.json()["result"] 取数据        │
+└──────────────┴───────────────────────────────────────┘
 ```
 
 ---
 
 ## 参考资料
 
-> 本教程参考以下 30 篇资料整理而成，均为可信来源：
-
-**英文资料：**
 1. [Python's Requests Library (Guide) – Real Python](https://realpython.com/python-requests/)
-2. [GET and POST Requests Using Python – GeeksforGeeks](https://www.geeksforgeeks.org/python/get-post-requests-using-python/)
-3. [Getting Started with Python HTTP Requests for REST APIs – DataCamp](https://www.datacamp.com/tutorial/making-http-requests-in-python)
-4. [Python Requests Tutorial – Edureka/Medium](https://medium.com/edureka/python-requests-tutorial-30edabfa6a1c)
-5. [Python Requests post Method – W3Schools](https://www.w3schools.com/python/ref_requests_post.asp)
-6. [How to POST JSON data with Python Requests – Stack Overflow](https://stackoverflow.com/questions/9733638/how-to-post-json-data-with-python-requests)
-7. [Post Nested Data Structure to the Server Using Requests – jdhao](https://jdhao.github.io/2021/04/08/send_complex_data_in_python_requests/)
-8. [Python requests POST with headers and body – GeeksforGeeks](https://www.geeksforgeeks.org/python/python-requests-post-request-with-headers-and-body/)
-9. [How do I post JSON using Python Requests – ReqBin](https://reqbin.com/code/python/m2g4va4a/python-requests-post-json-example)
-10. [Parameter Binding in ASP.NET Web API – TutorialsTeacher](https://www.tutorialsteacher.com/webapi/parameter-binding-in-web-api)
-11. [Get Request Body, Parameters & Headers in C# Controller](https://jd-bots.com/2023/01/28/get-request-body-parameters-headers-in-c-controller-for-incoming-http-requests/)
-12. [ASP.NET Core Web API Model Binding Attributes – Medium](https://medium.com/@beyzaerdogmus/asp-net-core-web-api-model-binding-attributes-c7c4a5b85afc)
-13. [Model Binding Using FromBody in ASP.NET Core – Dot Net Tutorials](https://dotnettutorials.net/lesson/frombody-inasp-net-core-web-api/)
-14. [FromBody and FromQuery Example in ASP.NET Core – RoundTheCode](https://www.roundthecode.com/dotnet-code-examples/a-frombody-and-fromquery-example-in-asp-net-core-web-api)
-15. [Why is ASP.NET Core FromBody not working or returning null?](https://www.roundthecode.com/dotnet-tutorials/why-asp-net-core-frombody-not-working-returning-null)
-16. [How to send multipart/form-data with requests in Python – Stack Overflow](https://stackoverflow.com/questions/12385179/how-to-send-a-multipart-form-data-with-requests-in-python)
-17. [Sending Multipart Form Data with Python Requests – ProxiesAPI](https://proxiesapi.com/articles/sending-multipart-form-data-with-python-requests)
-18. [How to Send multipart/form-data with Requests – StackAbuse](https://stackabuse.com/bytes/how-to-send-multipart-form-data-with-requests-in-python/)
-19. [Python request gives 415 error – Stack Overflow](https://stackoverflow.com/questions/52216808/python-request-gives-415-error-while-post-data)
-20. [How to fix 415 Unsupported Media Type – Stack Overflow](https://stackoverflow.com/questions/55375001/how-to-fix-415-unsupported-media-type-error-in-python-using-requests)
-21. [What is HTTP 415 Error – Scrapfly](https://scrapfly.io/blog/posts/what-is-http-415-error-unsupported-media-type)
-22. [APIs: Params= vs json= – Reddit/learnpython](https://www.reddit.com/r/learnpython/comments/r2phi2/apis_params_vs_json_whats_the_difference/)
-23. [Query Parameters and REST APIs in Python – CodeSignal](https://codesignal.com/learn/courses/basic-python-and-web-requests/lessons/mastering-data-retrieval-query-parameters-and-rest-apis-in-python)
-24. [Difference between data and json in Python Requests – Stack Overflow](https://stackoverflow.com/questions/26685248/difference-between-data-and-json-parameters-in-python-requests-package)
-25. [Post value always null between Python and ASP.NET Core – Stack Overflow](https://stackoverflow.com/questions/54595010/post-value-always-null-between-python-request-and-asp-net-core-api)
-26. [How to send an array using requests.post – Stack Overflow](https://stackoverflow.com/questions/31168819/how-to-send-an-array-using-requests-post-python-value-error-too-many-values)
-27. [Python File Upload: multipart/Form-Data – W3Resource](https://www.w3resource.com/python-exercises/urllib3/python-urllib3-exercise-19.php)
-
-**中文资料：**
-28. [Python-Requests.post 中 data 与 json 的区别 – CSDN](https://blog.csdn.net/grace666/article/details/90481970)
-29. [requests.post 中 data 与 json 参数区别详解 – 腾讯云开发者社区](https://cloud.tencent.com/developer/article/1738491)
-30. [requests 爬虫库使用简介 – 盖若](https://gairuo.com/p/python-requests)
+2. [GET and POST Requests in Python – GeeksforGeeks](https://www.geeksforgeeks.org/python/get-post-requests-using-python/)
+3. [HTTP Requests in Python – DataCamp](https://www.datacamp.com/tutorial/making-http-requests-in-python)
+4. [Python Requests post Method – W3Schools](https://www.w3schools.com/python/ref_requests_post.asp)
+5. [How to POST JSON with Python Requests – Stack Overflow](https://stackoverflow.com/questions/9733638/how-to-post-json-data-with-python-requests)
+6. [Post Nested Data Structure with Requests – jdhao.github.io](https://jdhao.github.io/2021/04/08/send_complex_data_in_python_requests/)
+7. [Python Requests POST with headers and body – GeeksforGeeks](https://www.geeksforgeeks.org/python/python-requests-post-request-with-headers-and-body/)
+8. [Difference: data= vs json= in Requests – Stack Overflow](https://stackoverflow.com/questions/26685248/difference-between-data-and-json-parameters-in-python-requests-package)
+9. [ABP Auto API Controllers 官方文档](https://abp.io/docs/latest/framework/api-development/auto-controllers)
+10. [ABP vNext Auto API Controllers – docs.abp.io](https://docs.abp.io/en/abp/6.0/API/Auto-API-Controllers)
+11. [ABP Framework Auto API Controller v2.7](https://abp.io/docs/2.7/API/Auto-API-Controllers)
+12. [ASP.NET Boilerplate Dynamic Web API](https://aspnetboilerplate.com/Pages/Documents/Dynamic-Web-API)
+13. [ABP Response Wrapper (__abp field) – GitHub Issue](https://github.com/aspnetboilerplate/aspnetboilerplate/issues/3749)
+14. [ABP WrapResult vs DontWrapResult – Stack Overflow](https://stackoverflow.com/questions/49423775/is-there-an-asp-net-boilerplate-way-of-getting-json-data)
+15. [Parameter Binding in ASP.NET Web API – Microsoft Learn](https://learn.microsoft.com/en-us/aspnet/web-api/overview/formats-and-model-binding/parameter-binding-in-aspnet-web-api)
+16. [ASP.NET Core Model Binding Attributes – Medium](https://medium.com/@beyzaerdogmus/asp-net-core-web-api-model-binding-attributes-c7c4a5b85afc)
+17. [FromBody in ASP.NET Core Web API – Dot Net Tutorials](https://dotnettutorials.net/lesson/frombody-inasp-net-core-web-api/)
+18. [Post value null between Python and ASP.NET Core – Stack Overflow](https://stackoverflow.com/questions/54595010/post-value-always-null-between-python-request-and-asp-net-core-api)
+19. [How to fix 415 Unsupported Media Type – Stack Overflow](https://stackoverflow.com/questions/55375001/how-to-fix-415-unsupported-media-type-error-in-python-using-requests)
+20. [Sending Multipart Form Data with Requests – ProxiesAPI](https://proxiesapi.com/articles/sending-multipart-form-data-with-python-requests)
+21. [How to send multipart/form-data – Stack Overflow](https://stackoverflow.com/questions/12385179/how-to-send-a-multipart-form-data-with-requests-in-python)
+22. [ABP vNext vs ABP Boilerplate Response Format – GitHub](https://github.com/abpframework/abp/issues/8805)
+23. [Python request gives 415 error – Stack Overflow](https://stackoverflow.com/questions/52216808/python-request-gives-415-error-while-post-data)
+24. [Query Parameters and REST APIs – CodeSignal](https://codesignal.com/learn/courses/basic-python-and-web-requests/lessons/mastering-data-retrieval-query-parameters-and-rest-apis-in-python)
+25. [Python Requests Tutorial – Edureka/Medium](https://medium.com/edureka/python-requests-tutorial-30edabfa6a1c)
 
 ---
 
-*本教程由 AI 助手小亮 🐈‍⬛ 整理生成，如有疑问欢迎提问！*
+*本教程由 AI 助手小亮 🐈‍⬛ 精心整理，专为实施同事定制*  
+*最后更新：2026-02-28*
