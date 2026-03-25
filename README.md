@@ -11,6 +11,7 @@
 
 ## 最新报告
 
+- [2026-03-25](2026/03/2026-03-25.md) — litellm 供应链攻击警示、Claude Code Auto Mode 发布、OpenAI Foundation 成立、SaaSpocalypse 真实案例
 - [2026-03-05](2026/03/2026-03-05.md) — GPT-5.3 Instant发布、Anthropic与五角大楼冲突升级、阿里千问负责人离职
 - [2026-03-02](2026/03/2026-03-02.md) — GLM-5技术公开、Gemini 3.1 Pro、Claude 4.6更新
 
